@@ -1,0 +1,480 @@
+---
+title: "T3.Trees"
+author: "Juan Manuel Cabrera"
+date: "2023-08-05"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Librerias**
+```{r, message=F}
+library(GGally)
+library(ggplot2)
+library(MASS)
+library(rsq)
+library(ppcor)
+library(relaimpo)
+library(car)
+```
+
+
+**Datasets**
+```{r, message=F}
+data(trees)
+attach(trees)
+```
+
+
+**0. Objetivo**
+
+El objetivo del ejercicio es buscar un modelado que estime el volumen (Volume) de
+un árbol a partir de su circunferencia (Girth) y de la altura del árbol (Height).
+
+Para entrenar el modelo vamos a tener el datasets trees que describiremos a continuación.
+
+
+**1. Análisis exploratorio**
+
+En este apartado se analizarán la relación entre las tres variables que componen
+el dataset (Girth, Height, Volume)
+
+
+**1.1. Dimensión del dataset**
+
+```{r}
+dim(trees)
+
+```
+La dimensión del dataset es de 31 observaciones y 3 características.
+
+
+**1.2. Tipos de datos**
+
+Se comienza analizando el tipo de datos
+
+```{r}
+str(trees)
+```
+Se observa que todas las variables son numéricas (doubles) por lo que no hay que
+realizar ninguna transformación.
+
+
+**1.3. Se comprueba si falta algún valor (NA)**
+
+Se va a contar el número de NA existentes en el dataframe
+
+```{r}
+sum(is.na(trees))
+
+```
+No existe ninguna périda de valor.
+
+
+**1.4. Visualización**
+
+Antes de proceder a realizar un análisis de correlación vamos a graficar las variables.
+
+Vamos a mosostrar en 2D la relación existente entre las disintintas variables.
+
+```{r}
+ggpairs(trees[, c('Volume', 'Girth', 'Height')])
+```
+En la relación Volume - Girth se observa que existe una correlación positiva fuerte
+
+En la relación Volume - Height se observa una correlación positiva leve.
+
+Además, no se observan valores outliers.
+
+
+**1.5. Análisis de correlación**
+
+**Shapiro-Wilks**
+
+Se realiza el test de Shapiro-Wilks y comprobamos la hipótesis nula, es decir, comprobamos
+si las distintas variables siguen una distribución normal.
+
+```{r}
+shapiro.test(Girth)
+```
+
+```{r}
+shapiro.test(Height)
+```
+
+```{r}
+shapiro.test(Volume)
+```
+
+De las tres variables anteriores se obtienen los siguientes resultados:
+
+Variable    |   p-value       | Normalidad
+------------|-----------------|------------
+Girth       |   0.08893       |     no
+Height      |   0.4034        |     no
+Volume      |   0.003579      |     si
+
+Se observa que unicamente *Volume* siguen una distribución normal.
+
+Como el resto de características *Girth* y *Height* no siguien una distribución normal y al existir
+pocos datos aplicaremos el método Spearman para ver la correlación existente.
+
+
+**Correlación**
+
+En primer lugar realizamos una correlación clásica del dataset.
+
+```{r}
+cor(trees, method="spearman")
+```
+Se observa que la mayor correlación se obtiene entre *Girth* y *Volume* tal como se mostro
+en el gráfico anterior.
+
+**Prueba de hipótesis**
+
+Ahora se va a realizar la hipótesis para la correlación para comprobar si existe una tendencia entre
+las variables.
+
+```{r}
+cor.test(Volume, Girth, method="spearman")
+
+```
+
+```{r}
+cor.test(Volume, Height, method="spearman")
+
+```
+
+Se obtienen los siguientes resultados:
+
+S(29) = 224.61, p < 0.001, rs=0.9547
+
+S(29) = 2089.6, p < 0.001, rs=0.5787
+
+Como en ambo casos p-value < 0.05 rechazamos la hipótesis nula. Por lo tanto,
+existe una correlación entre las variables estadísticamente significativa, positiva y alta.
+
+
+**Correlación parcial**
+
+Se va a comprobar si *Volume* y *Girth* se ven afectada por *Height*.
+
+```{r}
+pcor.test(Volume,
+          Girth,
+          Height,
+          method = "spearman")
+```
+
+S(28) = 17.185, p < 0.01, rs = 0.9557
+
+Como p-value < 0.05, se rechaza la hipótesis nula, por lo que, para un nivel de confianza del 95%, 
+la variable *height* es influyente. 
+
+
+La correlación clásica entre *Volume* y *Girth* calculada es de **0.9547**
+
+Como la correlación clásica es practicamente igual a la correlación parcial ($0.954 = 0.9557$)
+es un indicativo que la variable confunsión (Height) es poco influyente.
+
+
+**2. Modelado de regresión múltiple sin iteracción**
+
+El modelo matemático de la función es:
+
+$Volume = \beta_0 + \beta_1 \cdot Girth + \beta_2 \cdot Height$
+
+```{r}
+model_1 <- lm(Volume ~ Girth + Height, data=trees)
+
+summary(model_1)
+```
+**2.1. Bondad de ajuste**
+
+- Prueba F global F(2,28) = 255, p < 0.001.
+
+Como p-value < 0.05 se rechaza la hipótesis nula, por lo que alguno de los coeficientes
+de pendiente $\beta_j$ será distinto de cero.
+
+- R2 ajustado = 0.9442
+
+El modelo interpreta el **94.42%** de la variabilidad de la respuesta, es decir,
+el modelo se ajusta bien a los datos.
+
+```{r}
+rsq.partial(model_1)
+```
+- $R2_(Girth) = 0.9189$
+- $R2_(Height) = 0.1953$
+
+Analizando los R2 parcial se observa que la variable Girth es mucho más influyente que
+la variable Height. Hecho que se observó en el apartado anterior cuando se analizó
+la correlación clásica y parcial.
+
+- RSE = 3.882
+
+Indica que hay un error de 3.882 pies cúbicos (109.9m3) en el volumen del árbol.
+
+**Tasa de error**
+
+```{r}
+sigma(model_1)/mean(Volume)*100
+```
+
+- Tasa de error = 12.866%
+
+El modelo tiene una tasa de error del 12.866%.
+
+
+**2.2 Coeficientes**
+
+El intercepto ($\beta_0$ ) vale -57.99, este no tiene sentido cuando extrapolamos a un árbol
+cuyo Girth y/o Height es 0 ya que un árbol no puede tener un volumen negativo (ni circunferencia ni altura).
+
+El coeficiente de regresión ($\beta_1$) para el predictor Girth vale 4.71 y representa el cambio del volumen cuando el arbol es más/menos ancho y la altura es constante. Tiene pendiente positiva, hecho lógico ya que a más circunferencia, más volumen.
+
+El coeficiente de regresión ($\beta_2$) para el predictor Height vale 0.334 y representa el cambio de volumen cuando el árbol es más/menos alto.
+
+Como para cada coeficiente de regresión el p-value es menor 0.05. 
+Se concluye que todas las variables contribuyen al modelo.
+
+
+**2.3 Intervalos de confianza**
+
+El IC permitirá determinar, con un 95% de probabilidad, el rango del coeficiente de regresión de cada predictor.
+
+```{r}
+confint(model_1)
+```
+Existe un 95% de probabilidad de que el intervalo [4.167 - 5.249] contenga el valor verdadero de la pendiente de *Girth*.
+
+Existe un 95% de probabilidad de que el intervalo [0.073 - 0.606] contenga el valor verdadero de la pendiente de *Height*.
+
+
+**2.4. Importancia de los predictores**
+
+A continuación se van a determinar cuál es la contribución de cada predictor al modelo.
+
+```{r}
+crlm <- calc.relimp(model_1,
+            type = c("lmg"),
+            rela = T)
+crlm
+```
+
+La importancia de los predictores da como resultado:
+
+- *Girth* tiene una importancia del 80.456%
+- *Height* tiene una importancia del 19.544%
+
+En el siguiente gráfico de barras se puede observar de una forma más clara que el 
+volumen del árbol depende más de su circunferencia (Girth) que de la altura (Height).
+
+```{r}
+plot(crlm)
+```
+
+
+**2.5. Evaluación de los supuestos del modelo**
+
+```{r}
+par(mfrow = c(2,2))
+plot(model_1)
+```
+
+A continuación analizaremos los 4 gráficos.
+
+1. Residuals vs Fitted: representa la linealidad del modelo.
+
+Se observa que los residuos no siguen una tendencia lineal.
+
+2. Q-Q Residuals: representa la distribución normal del modelo.
+
+Los residuos se separan lijeramente de la distribución normal teórica (línea discontinua), pero podemos concluir
+que el modelo sigue una cierta distribución normal.
+
+3. Scale-Location: permite evaluar el supuesto de homocedasticidad.
+
+Se observa que la línea roja no es horizontal por lo que no se cumple el supuesto de homocedasticidad. Por lo tanto
+podríamos decir que el modelo presenta heterocedasticidad.
+
+4. Residuals vs Leverage: permite identificar valores inusuales o influyentes sobre el modelo.
+
+No se observan outliers si bien la observación nº 31 supera la distancia de Cook, lo que indica que es una
+observación influyente.
+
+
+**3. Modelo de regresión con iteracción**
+
+Ahora realizaremos el modelado teniendo en cuenta que va a existir una iteracción entre Girth y Height
+
+$Volume = \beta_0 + \beta_1 \cdot Girth + \beta_1 \cdot Height + \beta_3 \cdot Girth \cdot Height$
+
+```{r}
+model_2 <- lm(Volume ~ Girth*Height, data=trees)
+summary(model_2)
+```
+**3.1. Coeficientes**
+
+El intercepto ($\beta_0$ ) vale 69.396.
+
+El coeficiente de regresión ($\beta_1$) para el predictor Girth vale -5.866. Que la pendiente sea negativa no tiene sentido, ya que el volumen del árbol no puede disminuir cuando aumenta su grosor y mantenemos constante la altura.
+
+El coeficiente de regresión ($\beta_2$) para el predictor Height vale -1.2971. Pasa lo mismo que en el caso anterior, el volumen del árbol no puede disminuir cuando aumenta la altura.
+
+El coeficiente de regresión ($\beta_3$) para la iteracción Girth*Height vale 0.135
+
+
+
+**Multicolinealidad**
+
+A continuación se va a analizar si existe multicolinealidad con las variables independientes.
+
+```{r}
+vif(model_2)
+```
+
+Se observa que existe problema de multicolinealidad, los valores VIF son mayores a 5. 
+
+Esto significa que las variables independientes estan teniendo una fuerte correlación entre sí, es decir, no se puede determinar los coeficientes de regresión del modelo de forma fiable ya que no se pueden aislar los efectos de las variables independientes.
+
+Centraremos las variables para intentar resolver el problema de multicolinealidad
+
+```{r}
+#A través de la función c() transformamos la matriz en un vamos numérico
+#Necesario para posteriormente trabajar con los valores Girth2 y Height2 de forma más sencilla.
+
+Girth2 <-  c(scale(Girth, center=T, scale=F))
+Height2 <-  c(scale(Height, center=T, scale=F))
+
+model_3 <- lm(Volume ~ Girth2*Height2, data = trees)
+
+vif(model_3)
+```
+Al centrar las variables se observa que el valor VIF es menor que 5, o lo que es lo mismo,
+se ha resuelto los problemas de multicolinealidad.
+
+**Nuevo modelo**
+
+Se genera el nuevo modelo con las variables centradas.
+
+```{r}
+summary(model_3)
+```
+**3.2. Coeficientes**
+
+El intercepto ($\beta_0$ ) vale 28.82.
+
+El coeficiente de regresión ($\beta_1$) para el predictor Girth vale 4.378. Ahora el valor si tiene sentido, el volumen del árbol aumenta en función de su circunferencia.
+
+El coeficiente de regresión ($\beta_2$) para el predictor Height vale 0.487. La altura aumenta en función de la altura
+
+El coeficiente de regresión ($\beta_3$) para la iteracción Girth*Height vale 0.135
+
+
+**3.3 Ecuación del modelo**
+
+La función que define el modelo es:
+
+$Volume = 28.818 + 4.378 \cdot Girth + 0.487 \cdot Height + 0.135 \cdot Girth \cdot Height$
+
+
+**3.4. Annova**
+
+A través de la función ANOVA vamos a comprobar si la iteracción del modelo es estadisticamente significativo.
+
+```{r}
+Anova(model_3)
+```
+F(1,30) = 30.512, p < 0.001
+
+Se observa que la iteracción es significativa, por lo tanto hay que tenerla en cuenta esta iteracción en el modelo final.
+
+
+**3.5. Predicciones**
+
+Vamos a comprobar algunas predicciones del modelo
+
+Como model_3 está centrado, vamos a centrar los nuevos valores a predecir.
+
+El centrado sigue la siguiente función: 
+
+$V_c = V - \bar{V}$
+
+Donde:
+
+$V_c$ es la variable centrada
+
+$V$ es la variable sin centrar
+
+$\bar{V}$ es la media del conjunto
+
+```{r}
+#Determinamos la media de Girth y Height
+media_girth = mean(trees$Girth)
+media_height = mean(trees$Height)
+
+#Nuevos valores a predecir
+newGirth = c(10.8, 12.9, 20)
+newHeight = c(83, 85, 90)
+
+#Aplicamos el centrado a los valores a predecir
+newGirth_centered =  newGirth - media_girth
+newHeight_centeres = newHeight - media_height
+
+#Generamos el dataframe con los valores a predecir
+new <- data.frame(Girth2 = newGirth_centered, Height2 = newHeight_centeres)
+
+predictions <- predict(model_3, newdata = new, interval="prediction")
+
+predictions
+```
+Se observa que los valor obtenidos son:
+
+Girth   |   Height    |   Volume (fit)
+--------|-------------|---------------
+10.8    |   83        |   19.199
+12.9    |   85        |   31.252
+20      |   90        |   77.920
+
+
+También podemos aplicar la ecuación del modelo directamente tal como se muestra a continuación.
+
+```{r}
+28.818 + 4.378*newGirth_centered + 0.487*newHeight_centeres + 0.135*newGirth_centered*newHeight_centeres
+```
+Se comprueba que los valores determinados son practicamente los mismos.
+
+**Graficamos**
+
+Mostramos en la gráfica los puntos predichos
+
+```{r}
+volume_df <- as.data.frame(predictions)
+df <- data.frame(newGirth,volume_df['fit'])
+
+p <- ggplot(trees, aes(Girth, Volume)) +
+  geom_point() +
+  stat_smooth(method = lm)
+
+p + geom_point(data = df, mapping = aes(newGirth, fit), color="green")
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
